@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>小欣 AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="h-screen bg-gradient-to-br from-slate-100 via-gray-100 to-slate-200">
+
+<div class="h-screen max-w-5xl mx-auto flex flex-col px-4 py-4">
+
+    <!-- 顶部栏 -->
+    <header class="h-14 flex items-center justify-between px-5 bg-white/80 backdrop-blur rounded-2xl shadow-sm border">
+        <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold">
+                AI
+            </div>
+            <div>
+                <div class="font-semibold text-gray-800">小欣</div>
+                <div id="statusText" class="text-xs text-gray-400">空闲中</div>
+            </div>
+        </div>
+
+        <button onclick="clearChat()"
+                class="text-sm px-3 py-1.5 rounded-lg border text-gray-500 hover:bg-gray-100">
+            清空
+        </button>
+    </header>
+
+    <!-- 消息区 -->
+    <main id="messageContainer"
+          class="flex-1 overflow-y-auto my-4 p-5 bg-white/80 backdrop-blur rounded-2xl shadow-sm border space-y-5">
+
+        <div class="text-center text-gray-400 text-sm mt-10">
+            开始输入消息，和小欣对话
+        </div>
+
+    </main>
+
+    <!-- 输入区 -->
+    <footer class="bg-white/90 backdrop-blur rounded-2xl shadow-sm border p-4">
+        <div class="flex gap-3 items-end">
+            <textarea id="messageInput"
+                      rows="1"
+                      placeholder="输入内容，Enter 发送，Shift + Enter 换行"
+                      class="flex-1 resize-none max-h-32 px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
+                      onkeydown="handleKeyDown(event)"
+                      oninput="autoResize(this)"></textarea>
+
+            <button id="sendBtn"
+                    onclick="sendMessage()"
+                    class="h-12 px-6 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 active:scale-95 transition disabled:opacity-50">
+                发送
+            </button>
+        </div>
+    </footer>
+
+</div>
+
+<script>
+    let eventSource = null;
+    let aiContentBox = null;
+    let rawBuffer = "";
+
+    const API_BASE = "http://localhost:8090/api/v1/ollama/generate_stream";
+    const MODEL = "deepseek-r1:1.5b";
+
+    function setStatus(text) {
+        document.getElementById("statusText").innerText = text;
+    }
+
+    function scrollBottom() {
+        const container = document.getElementById("messageContainer");
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function removeWelcome() {
+        const container = document.getElementById("messageContainer");
+        const first = container.querySelector(".text-center");
+        if (first) first.remove();
+    }
+
+    function createUserMessage(text) {
+        removeWelcome();
+
+        const container = document.getElementById("messageContainer");
+
+        const wrap = document.createElement("div");
+        wrap.className = "flex justify-end";
+
+        const bubble = document.createElement("div");
+        bubble.className = "max-w-[75%] px-4 py-3 rounded-2xl rounded-tr-md bg-blue-600 text-white shadow-sm whitespace-pre-wrap leading-relaxed";
+        bubble.innerText = text;
+
+        wrap.appendChild(bubble);
+        container.appendChild(wrap);
+
+        scrollBottom();
+    }
+
+    function createAIMessage() {
+        removeWelcome();
+
+        const container = document.getElementById("messageContainer");
+
+        const wrap = document.createElement("div");
+        wrap.className = "flex justify-start gap-3";
+
+        const avatar = document.createElement("div");
+        avatar.className = "w-8 h-8 shrink-0 rounded-xl bg-gray-800 text-white flex items-center justify-center text-sm font-bold";
+        avatar.innerText = "AI";
+
+        const bubble = document.createElement("div");
+        bubble.className = "max-w-[78%] px-4 py-3 rounded-2xl rounded-tl-md bg-gray-100 text-gray-800 shadow-sm whitespace-pre-wrap leading-relaxed border";
+
+        const loading = document.createElement("span");
+        loading.className = "text-gray-400 animate-pulse";
+        loading.innerText = "正在生成...";
+
+        bubble.appendChild(loading);
+        wrap.appendChild(avatar);
+        wrap.appendChild(bubble);
+        container.appendChild(wrap);
+
+        scrollBottom();
+
+        return bubble;
+    }
+
+    // 隐藏 <think>...</think>
+    function getVisibleText(raw) {
+        return raw
+            .replace(/<think>[\s\S]*?<\/think>/g, "")
+            .replace(/<think>[\s\S]*$/g, "")
+            .replace(/<\/think>/g, "")
+            .trimStart();
+    }
+
+    function updateAIMessage(text, streaming = true) {
+        if (!aiContentBox) return;
+
+        aiContentBox.innerText = text;
+
+        if (streaming) {
+            const cursor = document.createElement("span");
+            cursor.className = "animate-pulse text-blue-500";
+            cursor.innerText = " ▍";
+            aiContentBox.appendChild(cursor);
+        }
+
+        scrollBottom();
+    }
+
+    function sendMessage() {
+        const input = document.getElementById("messageInput");
+        const sendBtn = document.getElementById("sendBtn");
+
+        const message = input.value.trim();
+        if (!message) return;
+
+        input.value = "";
+        autoResize(input);
+
+        createUserMessage(message);
+
+        if (eventSource) {
+            eventSource.close();
+        }
+
+        rawBuffer = "";
+        aiContentBox = createAIMessage();
+
+        sendBtn.disabled = true;
+        setStatus("生成中...");
+
+        const apiUrl =
+            `${API_BASE}?model=${encodeURIComponent(MODEL)}&message=${encodeURIComponent(message)}`;
+
+        eventSource = new EventSource(apiUrl);
+
+        eventSource.onmessage = function (event) {
+            try {
+                if (!event.data) return;
+
+                const data = JSON.parse(event.data);
+
+                const content = data?.result?.output?.content || "";
+                const finishReason = data?.result?.metadata?.finishReason;
+
+                if (content) {
+                    rawBuffer += content;
+
+                    const visibleText = getVisibleText(rawBuffer);
+                    updateAIMessage(visibleText || "正在思考...", true);
+                }
+
+                if (finishReason === "STOP") {
+                    closeStream();
+
+                    const finalText = getVisibleText(rawBuffer);
+                    updateAIMessage(finalText || "无内容返回", false);
+                }
+
+            } catch (error) {
+                console.error("解析失败：", error);
+            }
+        };
+
+        eventSource.onerror = function () {
+            closeStream();
+
+            const finalText = getVisibleText(rawBuffer);
+            if (finalText) {
+                updateAIMessage(finalText, false);
+            } else {
+                updateAIMessage("连接中断，请稍后重试。", false);
+            }
+        };
+    }
+
+    function closeStream() {
+        if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+        }
+
+        document.getElementById("sendBtn").disabled = false;
+        setStatus("空闲中");
+    }
+
+    function clearChat() {
+        if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+        }
+
+        rawBuffer = "";
+        aiContentBox = null;
+
+        const container = document.getElementById("messageContainer");
+        container.innerHTML = `
+        <div class="text-center text-gray-400 text-sm mt-10">
+            开始输入消息，和小欣对话
+        </div>
+    `;
+
+        document.getElementById("sendBtn").disabled = false;
+        setStatus("空闲中");
+    }
+
+    function handleKeyDown(event) {
+        if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            sendMessage();
+        }
+    }
+
+    function autoResize(textarea) {
+        textarea.style.height = "auto";
+        textarea.style.height = textarea.scrollHeight + "px";
+    }
+</script>
+
+</body>
+</html>
