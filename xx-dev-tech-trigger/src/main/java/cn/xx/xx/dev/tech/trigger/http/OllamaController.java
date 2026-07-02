@@ -1,4 +1,4 @@
-package cn.xx.xx.dev.tech.trigger;
+package cn.xx.xx.dev.tech.trigger.http;
 
 import cn.xx.xx.dev.tech.api.IAiService;
 import jakarta.annotation.Resource;
