@@ -63,7 +63,7 @@ public class RAGController implements IRAGService {
 
     @RequestMapping(value = "file/upload", method = RequestMethod.POST, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Override
-    public Response<String> uploadFile(@RequestParam String ragTag, @RequestParam("file") List<MultipartFile> files) {
+    public Response<String> uploadFile(@RequestParam("ragTag") String ragTag, @RequestParam("file") List<MultipartFile> files) {
         log.info("Upload knowledge base start. ragTag={}", ragTag);
 
         if (StringUtils.isBlank(ragTag)) {
@@ -100,9 +100,9 @@ public class RAGController implements IRAGService {
 
     @RequestMapping(value = "chat", method = RequestMethod.GET, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     @Override
-    public Flux<ChatResponse> RAGChat(@RequestParam(required = false) String ragTag,
-                                      @RequestParam(defaultValue = DEFAULT_MODEL) String model,
-                                      @RequestParam String message) {
+    public Flux<ChatResponse> RAGChat(@RequestParam(value = "ragTag", required = false) String ragTag,
+                                      @RequestParam(value = "model", defaultValue = DEFAULT_MODEL) String model,
+                                      @RequestParam("message") String message) {
 
         String modelName = StringUtils.defaultIfBlank(model, DEFAULT_MODEL);
 

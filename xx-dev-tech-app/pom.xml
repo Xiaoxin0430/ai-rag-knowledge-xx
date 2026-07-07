@@ -122,7 +122,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>cn.xx.xx.dev.tech.app.Application</mainClass>
+                    <mainClass>cn.xx.xx.dev.tech.Application</mainClass>
                     <layout>JAR</layout>
                 </configuration>
             </plugin>

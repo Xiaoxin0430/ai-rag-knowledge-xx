@@ -9,6 +9,7 @@ import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 
@@ -23,7 +24,7 @@ public class OllamaController implements IAiService {
 //    http://localhost:8090/api/v1/ollama/generate?model=deepseek-r1:1.5b&message=1+1
     @RequestMapping(value = "/generate", method = RequestMethod.GET)
     @Override
-    public ChatResponse generate(String model, String message) {
+    public ChatResponse generate(@RequestParam("model") String model, @RequestParam("message") String message) {
         return chatClient.call(new Prompt(
                 message,
                 OllamaOptions.create().withModel(model)
@@ -33,7 +34,7 @@ public class OllamaController implements IAiService {
     //    http://localhost:8090/api/v1/ollama/generate_stream?model=deepseek-r1:1.5b&message=1+1
     @RequestMapping(value = "/generate_stream", method = RequestMethod.GET)
     @Override
-    public Flux<ChatResponse> generateStream(String model, String message) {
+    public Flux<ChatResponse> generateStream(@RequestParam("model") String model, @RequestParam("message") String message) {
         System.out.println("本次调用模型：" + model);
         System.out.println("用户输入：" + message);
 
