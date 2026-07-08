@@ -1,476 +1,156 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>知识库问答</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知识库上传</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
+<body class="bg-gray-100 min-h-screen p-8">
+<div class="max-w-2xl mx-auto bg-white rounded-xl shadow-md p-6">
+    <h1 class="text-2xl font-bold text-gray-800 mb-6">知识库上传</h1>
 
-<body class="h-screen bg-slate-100 text-slate-900">
-<div class="h-screen max-w-7xl mx-auto px-4 py-4">
-    <div class="h-full grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)] gap-4">
-        <aside class="min-h-0 bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col">
-            <header class="px-5 py-4 border-b border-slate-200">
-                <h1 class="text-xl font-semibold">知识库问答</h1>
-                <p class="mt-1 text-sm text-slate-500">上传文档后，选择知识库进行上下文聊天</p>
-            </header>
+    <!-- 错误提示 -->
+    <div id="error" class="hidden mb-4 p-3 bg-red-100 text-red-700 rounded-lg"></div>
 
-            <section class="p-5 border-b border-slate-200">
-                <div class="flex items-center justify-between gap-3">
-                    <label for="ragTag" class="text-sm font-medium text-slate-700">知识库</label>
-                    <button id="refreshTagsBtn"
-                            class="text-sm px-3 py-1.5 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-50">
-                        刷新
-                    </button>
-                </div>
+    <!-- 上传表单 -->
+    <form id="uploadForm" class="space-y-4">
+        <!-- 知识库名称 -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">知识库名称</label>
+            <input
+                    type="text"
+                    id="ragTag"
+                    class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="请输入知识库名称"
+                    required>
+        </div>
 
-                <input id="ragTag"
-                       type="text"
-                       placeholder="输入或选择知识库名称"
-                       class="mt-2 w-full rounded-md border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"/>
-
-                <div id="tagList" class="mt-3 flex flex-wrap gap-2"></div>
-            </section>
-
-            <section class="p-5 flex-1 overflow-y-auto">
-                <div id="dropZone"
-                     class="border border-dashed border-slate-300 rounded-lg p-5 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50/60 transition">
-                    <input id="fileInput"
-                           type="file"
-                           multiple
-                           accept=".md,.txt,.sql,.pdf,.doc,.docx"
-                           class="hidden"/>
-
-                    <div class="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-md bg-blue-50 text-blue-600">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none"
-                             viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
-                                  d="M12 16V4m0 0L7 9m5-5l5 5M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+        <!-- 文件上传区域 -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">选择文件</label>
+            <div class="flex items-center justify-center w-full">
+                <label class="flex flex-col w-full border-2 border-dashed rounded-lg hover:border-gray-400 transition-colors h-32">
+                    <div class="flex flex-col items-center justify-center pt-5 h-full">
+                        <svg class="w-8 h-8 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                         </svg>
+                        <span class="text-sm text-gray-500">点击选择文件或拖拽到此区域</span>
+                        <span class="text-xs text-gray-400">支持格式：md, txt, sql</span>
                     </div>
+                    <input
+                            type="file"
+                            id="fileInput"
+                            class="hidden"
+                            multiple
+                            accept=".md,.txt,.sql">
+                </label>
+            </div>
 
-                    <p class="font-medium">选择文档或拖拽到这里</p>
-                    <p class="mt-1 text-xs text-slate-500">支持 md、txt、sql、pdf、doc、docx，可多选</p>
-                </div>
+            <!-- 文件列表 -->
+            <div id="fileList" class="mt-2 space-y-1"></div>
+        </div>
 
-                <div id="fileList" class="mt-4 space-y-2"></div>
-            </section>
-
-            <footer class="p-5 border-t border-slate-200">
-                <div class="flex gap-3">
-                    <button id="clearFilesBtn"
-                            class="flex-1 rounded-md border border-slate-300 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50">
-                        清空
-                    </button>
-                    <button id="uploadBtn"
-                            class="flex-1 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300">
-                        上传
-                    </button>
-                </div>
-                <div id="uploadMessage" class="mt-3 hidden rounded-md px-3 py-2 text-sm"></div>
-            </footer>
-        </aside>
-
-        <main class="min-h-0 bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col">
-            <header class="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-4">
-                <div class="min-w-0">
-                    <div class="font-semibold">知识库聊天</div>
-                    <div id="chatStatus" class="mt-1 text-xs text-slate-500 truncate">未选择知识库时将直接使用模型回答</div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <input id="modelInput"
-                           type="text"
-                           value="deepseek-r1:1.5b"
-                           class="hidden sm:block w-40 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"/>
-                    <button id="clearChatBtn"
-                            class="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                        清空对话
-                    </button>
-                </div>
-            </header>
-
-            <section id="messageContainer" class="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
-                <div data-welcome="true" class="mx-auto mt-16 max-w-md text-center text-sm text-slate-500">
-                    可直接提问；如果选择了知识库，回答会优先使用该知识库中的文档上下文。
-                </div>
-            </section>
-
-            <footer class="p-4 border-t border-slate-200">
-                <div class="flex gap-3 items-end">
-                    <textarea id="messageInput"
-                              rows="1"
-                              placeholder="输入问题，Enter 发送，Shift + Enter 换行"
-                              class="flex-1 max-h-32 resize-none rounded-md border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                              onkeydown="handleKeyDown(event)"
-                              oninput="autoResize(this)"></textarea>
-                    <button id="sendBtn"
-                            class="h-10 rounded-md bg-slate-900 px-5 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300">
-                        发送
-                    </button>
-                </div>
-            </footer>
-        </main>
-    </div>
+        <!-- 上传按钮 -->
+        <button
+                type="submit"
+                class="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center">
+            <svg id="spinner" class="hidden w-4 h-4 mr-2 animate-spin" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+            </svg>
+            开始上传
+        </button>
+    </form>
 </div>
 
 <script>
-    const API_BASE = "http://localhost:8090/api/v1/rag";
+        const form = document.getElementById('uploadForm');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
+        const errorDiv = document.getElementById('error');
+        const spinner = document.getElementById('spinner');
 
-    const ragTagInput = document.getElementById("ragTag");
-    const fileInput = document.getElementById("fileInput");
-    const dropZone = document.getElementById("dropZone");
-    const fileList = document.getElementById("fileList");
-    const uploadBtn = document.getElementById("uploadBtn");
-    const clearFilesBtn = document.getElementById("clearFilesBtn");
-    const uploadMessage = document.getElementById("uploadMessage");
-    const tagList = document.getElementById("tagList");
-    const refreshTagsBtn = document.getElementById("refreshTagsBtn");
-    const messageContainer = document.getElementById("messageContainer");
-    const messageInput = document.getElementById("messageInput");
-    const sendBtn = document.getElementById("sendBtn");
-    const clearChatBtn = document.getElementById("clearChatBtn");
-    const chatStatus = document.getElementById("chatStatus");
-    const modelInput = document.getElementById("modelInput");
-
-    const allowedTypes = [".md", ".txt", ".sql", ".pdf", ".doc", ".docx"];
-    let selectedFiles = [];
-    let eventSource = null;
-    let aiContentBox = null;
-    let rawBuffer = "";
-
-    function showUploadMessage(text, type = "info") {
-        uploadMessage.className = "mt-3 rounded-md px-3 py-2 text-sm border";
-        if (type === "success") {
-            uploadMessage.classList.add("bg-emerald-50", "text-emerald-700", "border-emerald-200");
-        } else if (type === "error") {
-            uploadMessage.classList.add("bg-red-50", "text-red-700", "border-red-200");
-        } else {
-            uploadMessage.classList.add("bg-blue-50", "text-blue-700", "border-blue-200");
-        }
-        uploadMessage.textContent = text;
-        uploadMessage.classList.remove("hidden");
-    }
-
-    function getFileExt(filename) {
-        const index = filename.lastIndexOf(".");
-        return index >= 0 ? filename.substring(index).toLowerCase() : "";
-    }
-
-    function addFiles(files) {
-        const incoming = Array.from(files);
-        const validFiles = incoming.filter(file => allowedTypes.includes(getFileExt(file.name)));
-
-        if (validFiles.length !== incoming.length) {
-            showUploadMessage("已过滤不支持的文件类型。", "error");
-        }
-
-        selectedFiles = selectedFiles.concat(validFiles);
-        renderFileList();
-    }
-
-    function renderFileList() {
-        fileList.innerHTML = "";
-        selectedFiles.forEach((file, index) => {
-            const item = document.createElement("div");
-            item.className = "flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2";
-            item.innerHTML = `
-                <div class="min-w-0">
-                    <div class="truncate text-sm font-medium text-slate-800">${escapeHtml(file.name)}</div>
-                    <div class="mt-0.5 text-xs text-slate-500">${formatSize(file.size)}</div>
-                </div>
-                <button class="shrink-0 text-sm text-red-600 hover:text-red-700" data-index="${index}">删除</button>
-            `;
-            item.querySelector("button").addEventListener("click", () => removeFile(index));
-            fileList.appendChild(item);
+        // 显示文件列表
+        fileInput.addEventListener('change', () => {
+            fileList.innerHTML = '';
+            Array.from(fileInput.files).forEach(file => {
+                const div = document.createElement('div');
+                div.className = 'text-sm text-gray-600 flex justify-between items-center';
+                div.innerHTML = `
+                    <span>${file.name}</span>
+                    <span class="text-gray-400">${(file.size / 1024).toFixed(2)}KB</span>
+                `;
+                fileList.appendChild(div);
+            });
         });
-    }
 
-    function removeFile(index) {
-        selectedFiles.splice(index, 1);
-        renderFileList();
-    }
+        // 提交表单
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
 
-    function formatSize(size) {
-        if (size < 1024) return size + " B";
-        if (size < 1024 * 1024) return (size / 1024).toFixed(1) + " KB";
-        return (size / 1024 / 1024).toFixed(1) + " MB";
-    }
+            const ragTag = document.getElementById('ragTag').value.trim();
+            const files = fileInput.files;
 
-    async function loadRagTags() {
-        tagList.innerHTML = `<span class="text-sm text-slate-400">加载中...</span>`;
-        try {
-            const res = await fetch(`${API_BASE}/query_rag_tag_list`);
-            const result = await res.json();
-            const tags = Array.isArray(result.data) ? result.data : [];
-
-            tagList.innerHTML = "";
-            if (tags.length === 0) {
-                tagList.innerHTML = `<span class="text-sm text-slate-400">暂无知识库</span>`;
+            // 验证输入
+            if (!ragTag) {
+                showError('请输入知识库名称');
+                return;
+            }
+            if (files.length === 0) {
+                showError('请选择至少一个文件');
                 return;
             }
 
-            tags.forEach(tag => {
-                const btn = document.createElement("button");
-                btn.className = "rounded-md bg-slate-100 px-3 py-1.5 text-sm text-slate-700 hover:bg-blue-600 hover:text-white";
-                btn.textContent = tag;
-                btn.addEventListener("click", () => {
-                    ragTagInput.value = tag;
-                    setChatStatus();
-                });
-                tagList.appendChild(btn);
-            });
-        } catch (err) {
-            tagList.innerHTML = `<span class="text-sm text-red-600">知识库列表加载失败</span>`;
-        }
-    }
-
-    async function uploadFiles() {
-        const ragTag = ragTagInput.value.trim();
-        if (!ragTag) {
-            showUploadMessage("请输入知识库名称。", "error");
-            return;
-        }
-        if (selectedFiles.length === 0) {
-            showUploadMessage("请选择至少一个文档。", "error");
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append("ragTag", ragTag);
-        selectedFiles.forEach(file => formData.append("file", file));
-
-        uploadBtn.disabled = true;
-        uploadBtn.textContent = "上传中";
-        showUploadMessage("正在上传并写入知识库，请稍等。");
-
-        try {
-            const res = await fetch(`${API_BASE}/file/upload`, {
-                method: "POST",
-                body: formData
-            });
-            const result = await res.json();
-
-            if (result.code === "0000") {
-                showUploadMessage("上传成功，知识库已更新。", "success");
-                selectedFiles = [];
-                renderFileList();
-                await loadRagTags();
-                setChatStatus();
-            } else {
-                showUploadMessage(result.info || "上传失败。", "error");
+            // 验证文件类型
+            const allowedTypes = ['text/markdown', 'text/plain', 'application/sql'];
+            const invalidFiles = Array.from(files).filter(file =>
+                !allowedTypes.includes(file.type)
+            );
+            if (invalidFiles.length > 0) {
+                showError(`无效文件类型：${invalidFiles.map(f => f.name).join(', ')}`);
+                return;
             }
-        } catch (err) {
-            showUploadMessage("上传失败，请检查后端服务和端口。", "error");
-        } finally {
-            uploadBtn.disabled = false;
-            uploadBtn.textContent = "上传";
-        }
-    }
 
-    function setChatStatus(text) {
-        if (text) {
-            chatStatus.textContent = text;
-            return;
-        }
-
-        const ragTag = ragTagInput.value.trim();
-        chatStatus.textContent = ragTag ? `当前知识库：${ragTag}` : "普通模型聊天";
-    }
-
-    function removeWelcome() {
-        const welcome = messageContainer.querySelector("[data-welcome='true']");
-        if (welcome) welcome.remove();
-    }
-
-    function scrollBottom() {
-        messageContainer.scrollTop = messageContainer.scrollHeight;
-    }
-
-    function createUserMessage(text) {
-        removeWelcome();
-        const wrap = document.createElement("div");
-        wrap.className = "flex justify-end";
-
-        const bubble = document.createElement("div");
-        bubble.className = "max-w-[78%] rounded-lg rounded-tr-sm bg-blue-600 px-4 py-3 text-sm leading-relaxed text-white whitespace-pre-wrap";
-        bubble.textContent = text;
-
-        wrap.appendChild(bubble);
-        messageContainer.appendChild(wrap);
-        scrollBottom();
-    }
-
-    function createAIMessage(useRag) {
-        removeWelcome();
-        const wrap = document.createElement("div");
-        wrap.className = "flex justify-start";
-
-        const bubble = document.createElement("div");
-        bubble.className = "max-w-[82%] rounded-lg rounded-tl-sm border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-relaxed text-slate-800 whitespace-pre-wrap";
-        bubble.textContent = useRag ? "正在检索知识库并生成回答..." : "正在生成回答...";
-
-        wrap.appendChild(bubble);
-        messageContainer.appendChild(wrap);
-        scrollBottom();
-        return bubble;
-    }
-
-    function getVisibleText(raw) {
-        return raw
-            .replace(/<think>[\s\S]*?<\/think>/g, "")
-            .replace(/<think>[\s\S]*$/g, "")
-            .replace(/<\/think>/g, "")
-            .trimStart();
-    }
-
-    function updateAIMessage(text, streaming = true) {
-        if (!aiContentBox) return;
-        aiContentBox.textContent = text || "正在生成...";
-
-        if (streaming) {
-            const cursor = document.createElement("span");
-            cursor.className = "animate-pulse text-blue-600";
-            cursor.textContent = " |";
-            aiContentBox.appendChild(cursor);
-        }
-        scrollBottom();
-    }
-
-    function sendMessage() {
-        const ragTag = ragTagInput.value.trim();
-        const message = messageInput.value.trim();
-        const model = modelInput.value.trim() || "deepseek-r1:1.5b";
-
-        if (!message) {
-            messageInput.focus();
-            return;
-        }
-
-        if (eventSource) eventSource.close();
-
-        messageInput.value = "";
-        autoResize(messageInput);
-        createUserMessage(message);
-
-        rawBuffer = "";
-        aiContentBox = createAIMessage(Boolean(ragTag));
-        sendBtn.disabled = true;
-        setChatStatus(ragTag ? "检索知识库并生成中..." : "模型生成中...");
-
-        const params = new URLSearchParams();
-        if (ragTag) {
-            params.append("ragTag", ragTag);
-        }
-        params.append("model", model);
-        params.append("message", message);
-
-        const apiUrl = `${API_BASE}/chat?${params.toString()}`;
-        eventSource = new EventSource(apiUrl);
-
-        eventSource.onmessage = event => {
+            // 开始上传
             try {
-                if (!event.data) return;
-                const data = JSON.parse(event.data);
-                const content = data?.result?.output?.content || "";
-                const finishReason = data?.result?.metadata?.finishReason;
+                toggleLoading(true);
+                const formData = new FormData();
+                formData.append('ragTag', ragTag);
+                Array.from(files).forEach(file => {
+                    formData.append('file', file);
+                });
 
-                if (content) {
-                    rawBuffer += content;
-                    updateAIMessage(getVisibleText(rawBuffer), true);
-                }
+                const response = await fetch('http://localhost:8090/api/v1/rag/file/upload', {
+                    method: 'POST',
+                    body: formData
+                });
 
-                if (finishReason === "STOP") {
-                    closeStream();
-                    updateAIMessage(getVisibleText(rawBuffer) || "没有生成内容。", false);
+                const result = await response.json();
+                if (result.code === '0000') {
+                    alert('上传成功！');
+                    form.reset();
+                    fileList.innerHTML = '';
+                } else {
+                    showError(result.info || '上传失败');
                 }
             } catch (err) {
-                console.error("解析流式响应失败", err);
+                showError('网络错误，请稍后重试');
+            } finally {
+                toggleLoading(false);
             }
-        };
+        });
 
-        eventSource.onerror = () => {
-            closeStream();
-            const finalText = getVisibleText(rawBuffer);
-            updateAIMessage(finalText || "连接中断，请检查后端服务或稍后重试。", false);
-        };
-    }
-
-    function closeStream() {
-        if (eventSource) {
-            eventSource.close();
-            eventSource = null;
+        function showError(message) {
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+            setTimeout(() => errorDiv.classList.add('hidden'), 3000);
         }
-        sendBtn.disabled = false;
-        setChatStatus();
-    }
 
-    function clearChat() {
-        if (eventSource) eventSource.close();
-        eventSource = null;
-        rawBuffer = "";
-        aiContentBox = null;
-        sendBtn.disabled = false;
-        messageContainer.innerHTML = `
-            <div data-welcome="true" class="mx-auto mt-16 max-w-md text-center text-sm text-slate-500">
-                可直接提问；如果选择了知识库，回答会优先使用该知识库中的文档上下文。
-            </div>
-        `;
-        setChatStatus();
-    }
-
-    function handleKeyDown(event) {
-        if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            sendMessage();
+        function toggleLoading(isLoading) {
+            spinner.classList.toggle('hidden', !isLoading);
+            form.querySelector('button').disabled = isLoading;
         }
-    }
-
-    function autoResize(textarea) {
-        textarea.style.height = "auto";
-        textarea.style.height = textarea.scrollHeight + "px";
-    }
-
-    function escapeHtml(text) {
-        return text
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-    }
-
-    dropZone.addEventListener("click", () => fileInput.click());
-    fileInput.addEventListener("change", event => {
-        addFiles(event.target.files);
-        fileInput.value = "";
-    });
-    dropZone.addEventListener("dragover", event => {
-        event.preventDefault();
-        dropZone.classList.add("border-blue-500", "bg-blue-50");
-    });
-    dropZone.addEventListener("dragleave", () => {
-        dropZone.classList.remove("border-blue-500", "bg-blue-50");
-    });
-    dropZone.addEventListener("drop", event => {
-        event.preventDefault();
-        dropZone.classList.remove("border-blue-500", "bg-blue-50");
-        addFiles(event.dataTransfer.files);
-    });
-
-    uploadBtn.addEventListener("click", uploadFiles);
-    clearFilesBtn.addEventListener("click", () => {
-        selectedFiles = [];
-        renderFileList();
-        showUploadMessage("已清空待上传文件。");
-    });
-    refreshTagsBtn.addEventListener("click", loadRagTags);
-    ragTagInput.addEventListener("input", setChatStatus);
-    sendBtn.addEventListener("click", sendMessage);
-    clearChatBtn.addEventListener("click", clearChat);
-
-    loadRagTags();
-    setChatStatus();
-</script>
+    </script>
 </body>
 </html>

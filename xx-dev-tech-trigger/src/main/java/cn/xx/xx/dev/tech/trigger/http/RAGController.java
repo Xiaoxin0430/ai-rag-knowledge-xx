@@ -4,7 +4,10 @@ import cn.xx.xx.dev.tech.api.IRAGService;
 import cn.xx.xx.dev.tech.api.response.Response;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.redisson.api.RList;
 import org.redisson.api.RedissonClient;
 import org.springframework.ai.chat.ChatResponse;
@@ -19,6 +22,7 @@ import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.PgVectorStore;
 import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.core.io.PathResource;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -28,6 +32,10 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import reactor.core.publisher.Flux;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +57,43 @@ public class RAGController implements IRAGService {
     private PgVectorStore pgVectorStore;
     @Resource
     private RedissonClient redissonClient;
+
+    @RequestMapping(value = "chat", method = RequestMethod.GET, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<ChatResponse> chat(@RequestParam(value = "model", defaultValue = DEFAULT_MODEL) String model,
+                                   @RequestParam("message") String message,
+                                   @RequestParam(value = "ragTag", required = false) String ragTag) {
+        if (StringUtils.isBlank(ragTag)) {
+            return ollamaChatClient.stream(new Prompt(
+                    message,
+                    OllamaOptions.create().withModel(StringUtils.defaultIfBlank(model, DEFAULT_MODEL))
+            ));
+        }
+
+        String systemPrompt = """
+                Use the information from the DOCUMENTS section to provide accurate answers but act as if you knew this information innately.
+                If unsure, simply state that you don't know.
+                Another thing you need to note is that your reply must be in Chinese!
+                DOCUMENTS:
+                    {documents}
+                """;
+
+        SearchRequest request = SearchRequest.query(message)
+                .withTopK(5)
+                .withFilterExpression(buildKnowledgeFilter(ragTag));
+
+        List<Document> documents = pgVectorStore.similaritySearch(request);
+        String documentCollectors = documents.stream().map(Document::toString).collect(Collectors.joining());
+        Message ragMessage = new SystemPromptTemplate(systemPrompt).createMessage(Map.of("documents", documentCollectors));
+
+        ArrayList<Message> messages = new ArrayList<>();
+        messages.add(ragMessage);
+        messages.add(new UserMessage(message));
+
+        return ollamaChatClient.stream(new Prompt(
+                messages,
+                OllamaOptions.create().withModel(StringUtils.defaultIfBlank(model, DEFAULT_MODEL))
+        ));
+    }
 
     @RequestMapping(value = "query_rag_tag_list", method = RequestMethod.GET)
     @Override
@@ -98,49 +143,86 @@ public class RAGController implements IRAGService {
         return Response.<String>builder().code("0000").info("调用成功").build();
     }
 
-    @RequestMapping(value = "chat", method = RequestMethod.GET, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+
+
+    //    http://localhost:8090/api/v1/analyze_git_repository
+    @RequestMapping(value = "analyze_git_repository", method = RequestMethod.POST)
     @Override
-    public Flux<ChatResponse> RAGChat(@RequestParam(value = "ragTag", required = false) String ragTag,
-                                      @RequestParam(value = "model", defaultValue = DEFAULT_MODEL) String model,
-                                      @RequestParam("message") String message) {
+    public Response<String> analyzeGitRepository(@RequestParam String repoUrl, @RequestParam String username, @RequestParam String password) throws Exception {
 
-        String modelName = StringUtils.defaultIfBlank(model, DEFAULT_MODEL);
+        String localPath = "./cloned-repo";
+        String repoProjectName = extractProjectName(repoUrl);
+        log.info("克隆路径：" + new File(localPath).getAbsolutePath());
 
-        if(StringUtils.isBlank(ragTag)) {
-            return ollamaChatClient.stream(new Prompt(
-                    message,
-                    OllamaOptions.create().withModel(modelName)
-            ));
+        FileUtils.deleteDirectory(new File(localPath));
+
+        Git git = Git.cloneRepository()
+                .setURI(repoUrl)
+                .setDirectory(new File(localPath))
+                .setCredentialsProvider(new UsernamePasswordCredentialsProvider(username,password))
+                .call();
+
+        Files.walkFileTree(Paths.get("./cloned-repo"), new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                log.info("文件路径:{}",file.toAbsolutePath());
+
+                try {
+                    PathResource resource = new PathResource(file);
+                    TikaDocumentReader reader = new TikaDocumentReader(resource);
+
+                    List<Document> documents = reader.get();
+
+                    if (documents == null || documents.isEmpty()) {
+                        log.info("跳过空文档:{}", file);
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                    List<Document> documentSplitterList = tokenTextSplitter.apply(documents);
+
+                    documentSplitterList.forEach(doc ->
+                            doc.getMetadata().put("knowledge", repoProjectName)
+                    );
+
+                    pgVectorStore.accept(documentSplitterList);
+
+                } catch (Exception e) {
+                    log.warn("文件解析失败，已跳过: {}", file.toAbsolutePath(), e);
+                }
+
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
+                log.info("Failed to access file: {} - {}", file.toString(), exc.getMessage());
+                return FileVisitResult.CONTINUE;
+            }
+        });
+
+        git.close();
+
+        FileUtils.deleteDirectory(new File(localPath));
+
+        RList<String> elements = redissonClient.getList("ragTag");
+        if (!elements.contains(repoProjectName)) {
+            elements.add(repoProjectName);
         }
 
-        String systemPrompt = """
-                Use the information from the DOCUMENTS section to provide accurate answers but act as if you knew this information innately.
-                If unsure, simply state that you don't know.
-                Another thing you need to note is that your reply must be in Chinese!
-                DOCUMENTS:
-                    {documents}
-                """;
+        log.info("遍历解析路径，上传完成:{}", repoUrl);
 
-        String knowledge = ragTag.trim();
-        String userMessage = message.trim();
+        return Response.<String>builder().code("0000").info("调用成功").build();
 
-        SearchRequest request = SearchRequest.query(userMessage)
-                .withTopK(4)
-                .withFilterExpression("knowledge == '" + knowledge.replace("'", "\\'") + "'");
+    }
 
-        List<Document> documents = pgVectorStore.similaritySearch(request);
-        String documentsCollectors = documents.stream().map(Document::toString).collect(Collectors.joining());
+    private String extractProjectName(String repoUrl) {
+        String[] parts = repoUrl.split("/");
+        String projectNameWithGit = parts[parts.length - 1];
+        return projectNameWithGit.replace(".git","");
+    }
 
-        Message ragMessage = new SystemPromptTemplate(systemPrompt).createMessage(Map.of("documents", documentsCollectors));
-
-        ArrayList<Message> messages = new ArrayList<>();
-        messages.add(ragMessage);
-        messages.add(new UserMessage(userMessage));
-
-        return ollamaChatClient.stream(new Prompt(
-                messages,
-                OllamaOptions.create().withModel(modelName)
-        ));
+    private String buildKnowledgeFilter(String ragTag) {
+        return "knowledge == '" + ragTag.replace("'", "\\'") + "'";
     }
 
 }

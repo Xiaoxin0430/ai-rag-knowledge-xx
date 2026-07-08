@@ -3,15 +3,27 @@ package cn.xx.xx.dev.tech.trigger.http;
 import cn.xx.xx.dev.tech.api.IAiService;
 import jakarta.annotation.Resource;
 import org.springframework.ai.chat.ChatResponse;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.chat.prompt.SystemPromptTemplate;
+import org.springframework.ai.document.Document;
 import org.springframework.ai.ollama.OllamaChatClient;
 import org.springframework.ai.ollama.api.OllamaOptions;
+import org.springframework.ai.vectorstore.PgVectorStore;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @CrossOrigin("*")
@@ -20,6 +32,9 @@ public class OllamaController implements IAiService {
 
     @Resource
     private OllamaChatClient chatClient;
+
+    @Resource
+    private PgVectorStore pgVectorStore;
 
 //    http://localhost:8090/api/v1/ollama/generate?model=deepseek-r1:1.5b&message=1+1
     @RequestMapping(value = "/generate", method = RequestMethod.GET)
@@ -42,6 +57,41 @@ public class OllamaController implements IAiService {
                 message,
                 OllamaOptions.create().withModel(model)
         ));
+    }
+
+    @RequestMapping(value = {"/generateStreamRag", "/generate_stream_rag"}, method = RequestMethod.GET)
+    @Override
+    public Flux<ChatResponse> generateStreamRag(@RequestParam String model, @RequestParam String ragTag, @RequestParam String message) {
+
+        String SYSTEM_PROMPT = """
+                Use the information from the DOCUMENTS section to provide accurate answers but act as if you knew this information innately.
+                If unsure, simply state that you don't know.
+                Another thing you need to note is that your reply must be in Chinese!
+                DOCUMENTS:
+                    {documents}
+                """;
+
+        SearchRequest request = SearchRequest.query(message)
+                .withTopK(5)
+                .withFilterExpression(buildKnowledgeFilter(ragTag));
+
+        List<Document> documents = pgVectorStore.similaritySearch(request);
+        String documentCollectors = documents.stream().map(Document::toString).collect(Collectors.joining());
+        Message ragMessage = new SystemPromptTemplate(SYSTEM_PROMPT).createMessage(Map.of("documents", documentCollectors));
+
+        ArrayList<Message> messages = new ArrayList<>();
+        messages.add(new UserMessage(message));
+        messages.add(ragMessage);
+
+        return chatClient.stream(new Prompt(
+                messages,
+                OllamaOptions.create()
+                        .withModel(StringUtils.hasText(model) ? model : "deepseek-r1:1.5b")
+        ));
+    }
+
+    private String buildKnowledgeFilter(String ragTag) {
+        return "knowledge == '" + ragTag.replace("'", "\\'") + "'";
     }
 
 
